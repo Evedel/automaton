@@ -5,8 +5,8 @@ import (
 	"actioneer/internal/command"
 	"actioneer/internal/config"
 	"actioneer/internal/logging"
+	"actioneer/internal/processor"
 	"actioneer/internal/state"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,15 +16,6 @@ import (
 )
 
 var alertNameLabel = "alertname"
-
-type Alert struct {
-	Status string
-	Labels map[string]string
-}
-
-type Notification struct {
-	Alerts []Alert
-}
 
 type Server struct {
 	IsDryRun bool
@@ -38,16 +29,12 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	slog.Debug("incomming request body: " + fmt.Sprintf("%+v", string(bytes)))
-	var notification Notification
-	if err := json.Unmarshal(bytes, &notification); err != nil {
-		slog.Error("cannot unmarshal incomming notification: " + fmt.Sprintf("%+v", string(bytes)))
-		slog.Error(err.Error())
+	notification, err := processor.ReadIncommingNotification(bytes)
+	if err != nil {
+		return
 	}
 
-	slog.Debug("processing notification: " + fmt.Sprint(notification))
-	if len(notification.Alerts) == 0 {
-		slog.Error("no alerts in notification: " + fmt.Sprint(notification))
+	if !processor.CheckActionNeeded(s.State, notification) {
 		return
 	}
 
@@ -55,9 +42,9 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if alertName, ok := alert.Labels[alertNameLabel]; ok {
 			slog.Debug("processing alert: " + alertName)
 
-			action, err := s.State.GetActionByAlertName(alertName)
-			if err != nil {
-				slog.Warn(err.Error())
+			action, found := s.State.GetActionByAlertName(alertName)
+			if !found {
+				slog.Warn("no action found for alert: " + alertName)
 				return
 			}
 			slog.Debug("command template: " + fmt.Sprint(action.CommandTemplate))

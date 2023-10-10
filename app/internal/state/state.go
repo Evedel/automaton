@@ -2,7 +2,6 @@ package state
 
 import (
 	"actioneer/internal/config"
-	"errors"
 	"strings"
 )
 
@@ -38,11 +37,11 @@ func InitState(config config.Config) (state State) {
 	return
 }
 
-func (s State) GetActionByAlertName(alertname string) (action Action, err error) {
+func (s State) GetActionByAlertName(alertname string) (action Action, found bool) {
 	for _, action := range s.Actions {
 		if action.Alertname == alertname {
-			return action, nil
+			return action, true
 		}
 	}
-	return action, errors.New("no action found for alertname: " + alertname)
+	return action, false
 }
